@@ -17,7 +17,7 @@ async function handleStock(req, res) {
   try {
     const data = await Promise.all(
       stocks.map(async (sym) => {
-        const response = await fetch(https://stock-price-checker-proxy.freecodecamp.rocks/v1/stock/${sym}/quote);
+        const response = await fetch(`https://stock-price-checker-proxy.freecodecamp.rocks/v1/stock/${sym}/quote`);
         const json = await response.json();
         const symbol = json.symbol?.toUpperCase();
 
