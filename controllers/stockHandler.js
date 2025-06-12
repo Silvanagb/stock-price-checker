@@ -1,71 +1,68 @@
-const Stock = require('../models/Stock');
-const axios = require('axios');
-const crypto = require('crypto');
+const fetch = require('node-fetch');
 
-const hashIP = ip => crypto.createHash('sha256').update(ip).digest('hex');
+const likesDatabase = {};
 
-exports.handleStock = async (req, res) => {
+function getClientIP(req) {
+  return req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+}
+
+async function handleStock(req, res) {
   const { stock, like } = req.query;
-  const ip = hashIP(req.ip);
+  const ip = getClientIP(req);
+  
+  if (!stock) return res.status(400).json({ error: 'Stock parameter is required' });
 
-  const fetchStock = async symbol => {
-    const response = await axios.get(
-      `https://stock-price-checker-proxy.freecodecamp.rocks/v1/stock/${symbol}/quote`
-    );
-    return {
-      stock: response.data.symbol,
-      price: response.data.latestPrice,
-    };
-  };
+  const stocks = Array.isArray(stock) ? stock : [stock];
+  
+  try {
+    const data = await Promise.all(
+      stocks.map(async (sym) => {
+        const response = await fetch(https://stock-price-checker-proxy.freecodecamp.rocks/v1/stock/${sym}/quote);
+        const json = await response.json();
+        const symbol = json.symbol?.toUpperCase();
 
-  if (Array.isArray(stock)) {
-    const data = await Promise.all(stock.map(s => fetchStock(s)));
-    const docs = await Promise.all(stock.map(s => Stock.findOneAndUpdate(
-      { stock: s.toUpperCase() },
-      { $setOnInsert: { stock: s.toUpperCase(), likes: [] } },
-      { upsert: true, new: true }
-    )));
-
-    if (like) {
-      docs.forEach(doc => {
-        if (!doc.likes.includes(ip)) {
-          doc.likes.push(ip);
-          doc.save();
+        if (!symbol || !json.latestPrice) {
+          throw new Error('Invalid stock symbol');
         }
+
+        if (!likesDatabase[symbol]) {
+          likesDatabase[symbol] = new Set();
+        }
+
+        if (like === 'true') {
+          likesDatabase[symbol].add(ip);
+        }
+
+        return {
+          stock: symbol,
+          price: json.latestPrice,
+          likes: likesDatabase[symbol].size
+        };
+      })
+    );
+
+    if (data.length === 1) {
+      return res.json({ stockData: data[0] });
+    } else {
+      const [stock1, stock2] = data;
+      return res.json({
+        stockData: [
+          {
+            stock: stock1.stock,
+            price: stock1.price,
+            rel_likes: stock1.likes - stock2.likes
+          },
+          {
+            stock: stock2.stock,
+            price: stock2.price,
+            rel_likes: stock2.likes - stock1.likes
+          }
+        ]
       });
     }
-
-    const rel_likes = [
-      docs[0].likes.length - docs[1].likes.length,
-      docs[1].likes.length - docs[0].likes.length
-    ];
-
-    return res.json({
-      stockData: data.map((d, i) => ({
-        stock: d.stock,
-        price: d.price,
-        rel_likes: rel_likes[i],
-      })),
-    });
-  } else {
-    const { stock: symbol, price } = await fetchStock(stock);
-    let doc = await Stock.findOneAndUpdate(
-      { stock: symbol },
-      { $setOnInsert: { stock: symbol, likes: [] } },
-      { upsert: true, new: true }
-    );
-
-    if (like && !doc.likes.includes(ip)) {
-      doc.likes.push(ip);
-      await doc.save();
-    }
-
-    return res.json({
-      stockData: {
-        stock: symbol,
-        price,
-        likes: doc.likes.length,
-      },
-    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch stock data' });
   }
-};
+}
+
+module.exports = { handleStock };
