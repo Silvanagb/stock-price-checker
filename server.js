@@ -1,17 +1,28 @@
-'use strict';
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+const helmet = require('helmet');
+const apiRoutes = require('./routes/api');
 
-const apiRoutes = require('./routes/api.js');
 const app = express();
 
-app.use(cors());
+// Seguridad y configuraciones
+app.use(helmet());
+app.use(cors({ origin: '*' }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Rutas
 app.use('/api', apiRoutes);
 
-const listener = app.listen(process.env.PORT || 3000, () => {
-  console.log('Your app is listening on port ' + listener.address().port);
+// Página principal
+app.get('/', (req, res) => {
+  res.send('Stock Price Checker is live!');
+});
+
+// Iniciar servidor
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(Server running on port ${PORT});
 });
 
 module.exports = app;
